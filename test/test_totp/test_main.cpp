@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "totp/AccountCodec.h"
 #include "totp/Base32.h"
 #include "totp/Hash.h"
 #include "totp/OtpAuthUri.h"
@@ -293,6 +294,76 @@ void test_account_display_label(void) {
 }
 
 // ---------------------------------------------------------------------------
+// Account blob codec
+// ---------------------------------------------------------------------------
+
+static totp::TotpAccount makeAccount(const std::string &issuer, const std::string &name,
+                                     const std::string &secretAscii, totp::HashType alg,
+                                     uint8_t digits, uint32_t period) {
+  totp::TotpAccount a;
+  a.issuer = issuer;
+  a.accountName = name;
+  a.secret = asBytes(secretAscii);
+  a.params.algorithm = alg;
+  a.params.digits = digits;
+  a.params.periodSeconds = period;
+  return a;
+}
+
+void test_codec_round_trip(void) {
+  std::vector<totp::TotpAccount> accounts = {
+      makeAccount("GitHub", "alice@example.com", "foobar", totp::HashType::Sha1, 6, 30),
+      makeAccount("AWS", "root", "12345678901234567890", totp::HashType::Sha256, 8, 60),
+      makeAccount("", "standalone", "secret", totp::HashType::Sha512, 6, 30),
+  };
+
+  const std::vector<uint8_t> blob = totp::serializeAccounts(accounts);
+  std::vector<totp::TotpAccount> decoded;
+  TEST_ASSERT_TRUE(totp::deserializeAccounts(blob.data(), blob.size(), decoded));
+  TEST_ASSERT_EQUAL(3u, decoded.size());
+
+  for (size_t i = 0; i < accounts.size(); ++i) {
+    TEST_ASSERT_EQUAL_STRING(accounts[i].issuer.c_str(), decoded[i].issuer.c_str());
+    TEST_ASSERT_EQUAL_STRING(accounts[i].accountName.c_str(), decoded[i].accountName.c_str());
+    TEST_ASSERT_EQUAL(accounts[i].params.algorithm, decoded[i].params.algorithm);
+    TEST_ASSERT_EQUAL_UINT8(accounts[i].params.digits, decoded[i].params.digits);
+    TEST_ASSERT_EQUAL_UINT32(accounts[i].params.periodSeconds, decoded[i].params.periodSeconds);
+    TEST_ASSERT_EQUAL(accounts[i].secret.size(), decoded[i].secret.size());
+    TEST_ASSERT_EQUAL_STRING(
+        std::string(accounts[i].secret.begin(), accounts[i].secret.end()).c_str(),
+        std::string(decoded[i].secret.begin(), decoded[i].secret.end()).c_str());
+  }
+}
+
+void test_codec_empty_round_trip(void) {
+  const std::vector<uint8_t> blob = totp::serializeAccounts({});
+  std::vector<totp::TotpAccount> decoded;
+  TEST_ASSERT_TRUE(totp::deserializeAccounts(blob.data(), blob.size(), decoded));
+  TEST_ASSERT_TRUE(decoded.empty());
+}
+
+void test_codec_zero_length_is_empty(void) {
+  std::vector<totp::TotpAccount> decoded;
+  TEST_ASSERT_TRUE(totp::deserializeAccounts(nullptr, 0, decoded));
+  TEST_ASSERT_TRUE(decoded.empty());
+}
+
+void test_codec_rejects_bad_magic(void) {
+  std::vector<uint8_t> blob = {'X', 1, 0, 0};
+  std::vector<totp::TotpAccount> decoded;
+  TEST_ASSERT_FALSE(totp::deserializeAccounts(blob.data(), blob.size(), decoded));
+}
+
+void test_codec_rejects_truncated(void) {
+  std::vector<totp::TotpAccount> accounts = {
+      makeAccount("GitHub", "alice", "foobar", totp::HashType::Sha1, 6, 30)};
+  std::vector<uint8_t> blob = totp::serializeAccounts(accounts);
+  blob.resize(blob.size() - 3);  // chop the secret short
+  std::vector<totp::TotpAccount> decoded;
+  TEST_ASSERT_FALSE(totp::deserializeAccounts(blob.data(), blob.size(), decoded));
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -331,6 +402,12 @@ int main(void) {
   RUN_TEST(test_uri_parse_rejects_missing_secret);
   RUN_TEST(test_uri_parse_rejects_non_otpauth);
   RUN_TEST(test_account_display_label);
+
+  RUN_TEST(test_codec_round_trip);
+  RUN_TEST(test_codec_empty_round_trip);
+  RUN_TEST(test_codec_zero_length_is_empty);
+  RUN_TEST(test_codec_rejects_bad_magic);
+  RUN_TEST(test_codec_rejects_truncated);
 
   return UNITY_END();
 }
