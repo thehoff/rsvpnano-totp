@@ -1,13 +1,13 @@
 {
-  "name": "RSVP Nano",
+  "name": "ESP32-S3 Authenticator",
   "version": "v0.0.5",
   "new_install_prompt_erase": true,
   "new_install_improv_wait_time": 0,
   "features": [
-    "Books and articles library",
-    "Device-hosted web companion",
-    "RSS feed downloads",
-    "USB SD-card transfer mode"
+    "On-device TOTP codes",
+    "Bluetooth account setup (no app)",
+    "Wi-Fi account setup",
+    "Secrets stored on internal flash"
   ],
   "builds": [
     {

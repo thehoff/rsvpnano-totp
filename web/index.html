@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>RSVP Nano Web Flasher</title>
+    <title>Authenticator Web Flasher</title>
     <script
       type="module"
       src="https://unpkg.com/esp-web-tools@10.1.0/dist/web/install-button.js?module"
@@ -843,17 +843,44 @@
       <section class="hero">
         <div class="card intro">
           <p class="eyebrow">Browser firmware installer</p>
-          <h1>RSVP Nano</h1>
+          <h1>ESP32-S3 Authenticator</h1>
           <p class="lead">
-            Flash the reader from Chrome or Edge without installing VS Code, PlatformIO,
-            or command-line tools. Connect the device by USB, click install,
-            and let the browser write it directly to the ESP32-S3.
+            Flash the TOTP authenticator firmware from Chrome or Edge without installing
+            VS Code, PlatformIO, or command-line tools. Connect the device by USB, click
+            install, and let the browser write it directly to the ESP32-S3.
           </p>
         </div>
 
       </section>
 
       <install-firmware></install-firmware>
+
+      <section class="card intro" id="setup-section">
+        <p class="eyebrow">After flashing — add your accounts</p>
+        <h2>Set up over Bluetooth or Wi-Fi</h2>
+        <p class="lead">
+          The device has no camera, so accounts are added from a phone or laptop. Pick whichever
+          suits your device — both add accounts from an <code>otpauth://</code> URI or a base32
+          secret, and can set the clock.
+        </p>
+        <ul>
+          <li>
+            <strong>Bluetooth (no app, Android/desktop Chrome or Edge):</strong>
+            on the device choose <code>PWR &rarr; Setup over Bluetooth</code>, then open the
+            <a href="./authenticator.html">Web Bluetooth setup page</a> and connect.
+            <em>iPhone/iPad Safari does not support Web Bluetooth — use Wi-Fi there.</em>
+          </li>
+          <li>
+            <strong>Wi-Fi (works everywhere, including iPhone):</strong>
+            choose <code>PWR &rarr; Setup over Wi-Fi</code>, join the
+            <code>Authenticator-XXXXXX</code> network, and open <code>http://192.168.4.1</code>.
+          </li>
+        </ul>
+        <p class="inline-note">
+          Hold <code>PWR</code> to leave setup. Secrets stay on the device — the setup pages never
+          read them back.
+        </p>
+      </section>
 
       <section class="card step-card" id="sdcard-section">
         <button
