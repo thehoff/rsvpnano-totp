@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Authenticator setup (Bluetooth)</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#0c1110;color:#f5f1e8;font:15px/1.45 system-ui,-apple-system,sans-serif}
+main{max-width:560px;margin:0 auto;padding:18px}
+h1{font-size:1.2rem}h2{font-size:1rem;margin:18px 0 8px}
+.card{background:#151b18;border:1px solid #2d3430;border-radius:10px;padding:14px;margin-bottom:14px}
+label{display:block;font-weight:650;margin:10px 0 4px}
+input,select{width:100%;border:1px solid #2d3430;border-radius:8px;background:#0c1110;color:#f5f1e8;font:inherit;padding:9px}
+.row{display:flex;gap:8px}.row>*{flex:1}
+button{border:1px solid #78d5b1;border-radius:8px;background:#78d5b1;color:#07110e;font:inherit;font-weight:700;padding:10px 12px;margin-top:12px;width:100%}
+button.del{background:#0c1110;color:#ff9b73;border-color:#2d3430;width:auto;margin:0;padding:6px 10px}
+.item{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #2d3430;padding:10px 0}
+.item:first-child{border-top:0}.muted{color:#a7aaa0;font-size:.9rem}
+#status{padding:10px;border-radius:8px;background:#1d2924;margin-bottom:12px}
+.warn{background:#3a2417;color:#ffc2a8}
+fieldset{border:1px solid #2d3430;border-radius:10px;opacity:.5;pointer-events:none}
+fieldset.on{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body><main>
+<h1>Authenticator setup over Bluetooth</h1>
+<div id="status">Tap “Connect” and pick your Authenticator device.</div>
+<button id="connect" onclick="connect()">Connect</button>
+
+<fieldset id="panel">
+<div class="card">
+<h2>Add account</h2>
+<label>Paste otpauth:// URI</label>
+<input id="uri" placeholder="otpauth://totp/Issuer:user?secret=...">
+<button onclick="addUri()">Add from URI</button>
+<p class="muted">Or enter the details manually:</p>
+<label>Issuer</label><input id="issuer" placeholder="GitHub">
+<label>Account</label><input id="account" placeholder="you@example.com">
+<label>Secret (base32)</label><input id="secret" placeholder="JBSWY3DPEHPK3PXP">
+<div class="row">
+<div><label>Algorithm</label><select id="algorithm"><option>SHA1</option><option>SHA256</option><option>SHA512</option></select></div>
+<div><label>Digits</label><select id="digits"><option>6</option><option>8</option></select></div>
+<div><label>Period</label><select id="period"><option>30</option><option>60</option></select></div>
+</div>
+<button onclick="addManual()">Add manually</button>
+</div>
+
+<div class="card">
+<h2>Accounts</h2>
+<div id="list" class="muted">—</div>
+</div>
+
+<div class="card">
+<h2>Device clock</h2>
+<div id="clock" class="muted">—</div>
+<button onclick="setTime()">Sync clock from this browser</button>
+</div>
+</fieldset>
+
+<p class="muted">Bluetooth setup needs Chrome or Edge on Android, ChromeOS, Windows, macOS, or Linux.
+iPhone/iPad Safari does not support Web Bluetooth — use the device’s Wi‑Fi setup page instead.</p>
+
+<script>
+const SERVICE='9a1d0000-3c1a-4f8e-9d2b-7c1e2a4b6d80';
+const RX='9a1d0001-3c1a-4f8e-9d2b-7c1e2a4b6d80';
+const TX='9a1d0002-3c1a-4f8e-9d2b-7c1e2a4b6d80';
+let rxChar=null, txChar=null, device=null;
+
+function setStatus(t,warn){const s=document.getElementById('status');s.textContent=t;s.className=warn?'warn':''}
+
+if(!navigator.bluetooth){
+  setStatus('This browser has no Web Bluetooth. Use Chrome/Edge (not iOS), or the Wi-Fi setup page.',true);
+  document.getElementById('connect').disabled=true;
+}
+
+async function connect(){
+  try{
+    setStatus('Requesting device…');
+    device=await navigator.bluetooth.requestDevice({filters:[{services:[SERVICE]}]});
+    device.addEventListener('gattserverdisconnected',onDisconnected);
+    setStatus('Connecting…');
+    const server=await device.gatt.connect();
+    const service=await server.getPrimaryService(SERVICE);
+    rxChar=await service.getCharacteristic(RX);
+    txChar=await service.getCharacteristic(TX);
+    await txChar.startNotifications();
+    txChar.addEventListener('characteristicvaluechanged',refresh);
+    document.getElementById('panel').classList.add('on');
+    await refresh();
+    setStatus('Connected to '+(device.name||'device'));
+  }catch(e){ setStatus('Connection failed: '+e.message,true); }
+}
+
+function onDisconnected(){
+  rxChar=txChar=null;
+  document.getElementById('panel').classList.remove('on');
+  setStatus('Disconnected. Tap Connect to reconnect.',true);
+}
+
+// Send a newline-terminated command, chunked to fit the BLE MTU.
+async function send(line){
+  if(!rxChar){setStatus('Not connected',true);return}
+  const data=new TextEncoder().encode(line+'\n');
+  const size=180;
+  for(let i=0;i<data.length;i+=size){
+    const slice=data.slice(i,i+size);
+    if(rxChar.writeValueWithResponse) await rxChar.writeValueWithResponse(slice);
+    else await rxChar.writeValue(slice);
+  }
+}
+
+async function refresh(){
+  if(!txChar)return;
+  try{
+    const v=await txChar.readValue();
+    const d=JSON.parse(new TextDecoder().decode(v));
+    const list=document.getElementById('list');
+    const items=d.accounts||[];
+    list.innerHTML=items.length
+      ? items.map((a,i)=>`<div class="item"><div><div>${a.label||'(unnamed)'}</div><div class="muted">${a.algorithm} · ${a.digits} digits · ${a.period}s</div></div><button class="del" onclick="del(${i})">Delete</button></div>`).join('')
+        +(d.truncated?'<p class="muted">…more accounts on device</p>':'')
+      : '<span class="muted">none yet</span>';
+    document.getElementById('clock').textContent=d.timeValid?('Set ('+d.epoch+' UTC)'):'Not set — sync below';
+  }catch(e){/* ignore transient read errors */}
+}
+
+function otpauthFromFields(){
+  const issuer=document.getElementById('issuer').value.trim();
+  const account=document.getElementById('account').value.trim()||'Account';
+  const secret=document.getElementById('secret').value.replace(/\s+/g,'');
+  const alg=document.getElementById('algorithm').value;
+  const digits=document.getElementById('digits').value;
+  const period=document.getElementById('period').value;
+  const label=encodeURIComponent(issuer?issuer+':'+account:account);
+  let q='secret='+encodeURIComponent(secret)+'&algorithm='+alg+'&digits='+digits+'&period='+period;
+  if(issuer)q+='&issuer='+encodeURIComponent(issuer);
+  return {uri:'otpauth://totp/'+label+'?'+q, secret};
+}
+
+async function addUri(){
+  const u=document.getElementById('uri').value.trim();
+  if(!u){setStatus('Paste an otpauth:// URI first',true);return}
+  setStatus('Adding…'); await send('OTP '+u);
+  document.getElementById('uri').value='';
+  setTimeout(refresh,300);
+}
+async function addManual(){
+  const {uri,secret}=otpauthFromFields();
+  if(!secret){setStatus('Enter a base32 secret',true);return}
+  setStatus('Adding…'); await send('OTP '+uri);
+  document.getElementById('secret').value='';
+  setTimeout(refresh,300);
+}
+async function del(i){ if(confirm('Delete this account?')){await send('DEL '+i); setTimeout(refresh,300);} }
+async function setTime(){ await send('TIME '+Math.floor(Date.now()/1000)); setTimeout(refresh,300); }
+</script>
+</main></body></html>

@@ -141,6 +141,12 @@ void TotpApp::update(uint32_t nowMs) {
         renderSetup();
       }
       break;
+    case Screen::SetupBle:
+      ble_.update();
+      if (nowMs - lastSetupRenderMs_ >= 1000) {
+        renderSetupBle();
+      }
+      break;
     case Screen::Menu:
     case Screen::Boot:
       break;
@@ -157,6 +163,8 @@ void TotpApp::handlePowerButton(uint32_t nowMs) {
       powerHandledThisPress_ = true;
       if (screen_ == Screen::Setup) {
         exitSetup();
+      } else if (screen_ == Screen::SetupBle) {
+        exitSetupBle();
       } else {
         powerOff();  // does not return
       }
@@ -260,7 +268,8 @@ void TotpApp::applyListSwipe(int direction) {
 // --- menu -------------------------------------------------------------------
 
 void TotpApp::openMenu() {
-  menuItems_ = {String("Setup over Wi-Fi"), String("Power off"), String("Back")};
+  menuItems_ = {String("Setup over Wi-Fi"), String("Setup over Bluetooth"), String("Power off"),
+                String("Back")};
   menuSelectedIndex_ = 0;
   screen_ = Screen::Menu;
   renderMenu();
@@ -278,9 +287,12 @@ void TotpApp::selectMenuItem(uint32_t nowMs) {
       enterSetup();
       break;
     case 1:
-      powerOff();
+      enterSetupBle();
       break;
     case 2:
+      powerOff();
+      break;
+    case 3:
     default:
       closeMenu();
       break;
@@ -308,10 +320,32 @@ void TotpApp::exitSetup() {
   renderList(millis(), true);
 }
 
+void TotpApp::enterSetupBle() {
+  display_.renderStatus("SETUP", "Starting Bluetooth", "");
+  if (!ble_.begin(store_, time_)) {
+    display_.renderStatus("SETUP FAILED", "Could not start Bluetooth", "PWR returns");
+    screen_ = Screen::Menu;
+    return;
+  }
+  screen_ = Screen::SetupBle;
+  lastSetupRenderMs_ = 0;
+  renderSetupBle();
+}
+
+void TotpApp::exitSetupBle() {
+  ble_.end();
+  screen_ = Screen::List;
+  lastListRenderSecond_ = 0;
+  renderList(millis(), true);
+}
+
 void TotpApp::powerOff() {
   display_.renderStatus("OFF", "Release PWR", "Hold PWR to start");
   if (web_.active()) {
     web_.end();
+  }
+  if (ble_.active()) {
+    ble_.end();
   }
   delay(300);
   display_.prepareForSleep();
@@ -395,6 +429,12 @@ void TotpApp::renderSetup() {
   lastSetupRenderMs_ = millis();
   String line2 = web_.url() + "  (" + String(static_cast<unsigned>(store_.count())) + ")";
   display_.renderStatus(web_.ssid(), line2, "Open the page, then hold PWR");
+}
+
+void TotpApp::renderSetupBle() {
+  lastSetupRenderMs_ = millis();
+  display_.renderStatus(ble_.deviceName(), "Bluetooth setup ready",
+                        "Open the web page, then hold PWR");
 }
 
 }  // namespace totp

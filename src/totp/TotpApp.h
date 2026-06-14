@@ -8,6 +8,7 @@
 #include "input/TouchHandler.h"
 #include "totp/AccountStore.h"
 #include "totp/TimeService.h"
+#include "totp/TotpBleServer.h"
 #include "totp/TotpWebServer.h"
 
 namespace totp {
@@ -25,9 +26,10 @@ class TotpApp {
  private:
   enum class Screen : uint8_t {
     Boot,
-    List,   // live codes
-    Menu,   // short PWR press from the list
-    Setup,  // Wi-Fi provisioning AP is up
+    List,      // live codes
+    Menu,      // short PWR press from the list
+    Setup,     // Wi-Fi provisioning AP is up
+    SetupBle,  // BLE provisioning service is advertising
   };
 
   void loadUiPreferences();
@@ -43,6 +45,8 @@ class TotpApp {
   void selectMenuItem(uint32_t nowMs);
   void enterSetup();
   void exitSetup();
+  void enterSetupBle();
+  void exitSetupBle();
   void powerOff();
 
   void cycleBrightness();
@@ -51,6 +55,7 @@ class TotpApp {
   void renderList(uint32_t nowMs, bool force = false);
   void renderMenu();
   void renderSetup();
+  void renderSetupBle();
 
   std::string codeForAccount(const TotpAccount &account, uint64_t now) const;
   static String formatCode(const std::string &code);
@@ -62,6 +67,7 @@ class TotpApp {
   AccountStore store_;
   TimeService time_;
   TotpWebServer web_;
+  TotpBleServer ble_;
 
   Screen screen_ = Screen::Boot;
   size_t listSelectedIndex_ = 0;
