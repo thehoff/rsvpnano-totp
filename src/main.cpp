@@ -1,10 +1,10 @@
 #include <Arduino.h>
 #include <esp_log.h>
 
-#include "app/App.h"
 #include "board/BoardConfig.h"
+#include "totp/TotpApp.h"
 
-App app;
+totp::TotpApp app;
 
 void setup() {
   Serial.begin(115200);
@@ -15,7 +15,7 @@ void setup() {
   while (!Serial && millis() - serialWaitStart < 2000) {
     delay(10);
   }
-  Serial.println("[main] app setup");
+  Serial.println("[main] authenticator setup");
   app.begin();
 }
 
